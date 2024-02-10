@@ -1,0 +1,141 @@
+# Flink paimon assessment solution
+
+## Setup instructions
+
+# step1: Download the virtualbox and unbuntu os and install unbuntu os in virtualbox
+# Task 1: Setup Apache Flink Cluster
+
+# Step1: Download Apache Flink:
+
+bash
+
+wget https://dlcdn.apache.org/flink/flink-1.18.1/flink-1.18.1-src.tgz
+
+# Step2: Extract Flink:
+
+bash
+
+tar -xvf flink-1.18.1-src.tgz
+
+# Step3: Install Java (if not already installed):
+
+bash
+
+sudo apt update
+sudo apt install default-jdk
+
+# Step4: Set JAVA_HOME:
+
+bash
+
+export JAVA_HOME=/usr/lib/jvm/default-java
+
+# STep5: Start Flink Cluster:
+
+bash
+
+cd flink-1.18.1
+./bin/start-cluster.sh
+
+# Step6: Add Paimon Table Support:
+
+bash
+
+mkdir -p ./plugins/paimon
+cd plugins/paimon
+wget https://repository.apache.org/content/groups/snapshots/org/apache/paimon/paimon-flink-1.18/0.8-SNAPSHOT/paimon-flink-1.18-0.8-20240210.001859-13.jar
+
+## Task 2: Python Program
+
+# Step8: Install Python dependencies:
+
+bash
+
+pip install apache-flink
+
+# Step9: Create Python script (e.g., stream_to_paimon.py):
+
+python code:
+
+from pyflink.datastream import StreamExecutionEnvironment
+from pyflink.table import StreamTableEnvironment, CsvTableSource, DataTypes
+from pyflink.table.descriptors import Schema, FileSystem
+from pyflink.table.udf import udf
+
+# Define a UDF to format names
+@udf(input_types=[DataTypes.STRING()], result_type=DataTypes.STRING())
+def format_name(name):
+    return name.lower().title()
+
+# Create execution environment
+env = StreamExecutionEnvironment.get_execution_environment()
+t_env = StreamTableEnvironment.create(env)
+
+# Define schema for CSV file
+schema = Schema().field("person_ID", DataTypes.INT()) \
+    .field("name", DataTypes.STRING()) \
+    .field("first", DataTypes.STRING()) \
+    .field("last", DataTypes.STRING()) \
+    .field("middle", DataTypes.STRING()) \
+    .field("email", DataTypes.STRING()) \
+    .field("phone", DataTypes.STRING()) \
+    .field("fax", DataTypes.STRING()) \
+    .field("title", DataTypes.STRING())
+
+# Define file system connector
+t_env.connect(FileSystem()
+    .path('/path/to/csv/file')
+    .with_format(Csv()
+        .field('person_ID', DataTypes.INT())
+        .field('name', DataTypes.STRING())
+        .field('first', DataTypes.STRING())
+        .field('last', DataTypes.STRING())
+        .field('middle', DataTypes.STRING())
+        .field('email', DataTypes.STRING())
+        .field('phone', DataTypes.STRING())
+        .field('fax', DataTypes.STRING())
+        .field('title', DataTypes.STRING())
+        .line_delimiter('\n')
+        .field_delimiter(',')
+        .ignore_parse_errors()
+    )
+    .with_schema(schema)
+    .create_temporary_table('source_table')
+)
+
+# Define Paimon table sink
+t_env.execute_sql("""
+    CREATE TABLE paimon_table (
+        person_ID INT,
+        name STRING,
+        first STRING,
+        last STRING,
+        middle STRING,
+        email STRING,
+        phone STRING,
+        fax STRING,
+        title STRING
+    ) WITH (
+        'connector' = 'paimon',
+        'url' = 'paimon://localhost:9092',
+        'table-name' = 'paimon_table',
+        'format' = 'json'
+    )
+""")
+
+# Define query to insert into Paimon table and format name
+t_env.from_path('source_table') \
+    .select("person_ID, format_name(name), first, last, middle, email, phone, fax, title") \
+    .insert_into('paimon_table')
+
+# Execute the streaming job
+env.execute("Stream to Paimon Table")
+
+# Step10: Run the Python script:
+
+bash
+
+python3 streaming_app.py
+
+## This script will read data from the CSV file specified, format the name column, and insert the data into the Paimon table. Finally, it will print the records of the Paimon table on the console.
+
